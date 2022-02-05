@@ -30,6 +30,7 @@
 
 #define MAXLENGTH 2048
 #define MAXARGS 512
+#define ERR -1
 
 /* Struct containing all the different elements included in a command */
 struct command {
@@ -45,9 +46,9 @@ struct command *createCommand(char *currLine);
 struct command *destroyCommand();
 void startSmallSh();
 struct command *promptForCommand();
-int statusCom(int mode);
+void statusCom(int mode);
 void exitCom();
 void cdCom(struct command *com);
 void cd(char * path);
-
+char* expOfPID(int PID, const char* argStr, const char* orig);
 #endif

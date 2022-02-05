@@ -54,38 +54,44 @@
 
 void startSmallSh() {
     struct command *com;                 // Instantiate our command struct
-    int lastFgStatus = -5;    
+    int status = 0;
+    int runShell = 1;                   
 
-    com = promptForCommand();
-    
-    int i = 0;
-    char **argsPtr = com->args;
-    while (*(com->args[i]) != NULL) {
-        printf("ARG = %s\n", argsPtr[i]);         // DELETE
-        i++;
-    }
-    printf("pid = %d\n", com->pid);               // DELETE
-    printf("inputFile = %s\n", com->inputFile);   // DELETE
-    printf("outFile = %s\n", com->outputFile);   // DELETE
-    printf("bgFlag = %d\n", com->bgFlag);         // DELETE
+    while (runShell == 1) { 
+        com = promptForCommand();
 
+        char **argsPtr = com->args;
+        printf("\n");
+        printf("pid = %d\n", com->pid);               // DELETE
+        printf("inputFile = %s\n", com->inputFile);   // DELETE
+        printf("outFile = %s\n", com->outputFile);   // DELETE
+        printf("bgFlag = %d\n", com->bgFlag);         // DELETE
+        printf("\n");
 
-    //check if we need to use a builtin
-    if ( (strcmp(argsPtr[0], "exit") == 0)   || 
-         (strcmp(argsPtr[0], "status") == 0) || 
-         (strcmp(argsPtr[0], "cd") == 0)){
+        //check if we need to use a builtin
+        if ( (strcmp(argsPtr[0], "exit") == 0)   || 
+             (strcmp(argsPtr[0], "status") == 0) || 
+             (strcmp(argsPtr[0], "cd") == 0)){
 
-        if ((strcmp(argsPtr[0], "exit") == 0)){
-            exitCom();
+            if ((strcmp(argsPtr[0], "exit") == 0)){
+                printf("now exiting\n");        //DELETE
+                runShell = 0;
+                exitCom();
+
+            }
+            else if ((strcmp(argsPtr[0], "status") == 0)){
+                statusCom(status);
+            }
+            else if ((strcmp(argsPtr[0], "cd") == 0)){
+                printf("%s\n", argsPtr[0]);      //DELETE
+                cdCom(com);
+            }
         }
-        else if ((strcmp(argsPtr[0], "status") == 0)){
-            lastFgStatus = statusCom(1);
+        else if(strcmp(argsPtr[0], "echo") == 0 && argsPtr[1] != NULL && 
+                strcmp(argsPtr[1], "$$") == 0){
+            printf("%d\n", com->pid);
         }
-        else if ((strcmp(argsPtr[0], "cd") == 0)){
-            printf("%s\n", argsPtr[0]);
-            cdCom(com);
-        }
-    }
+    }    
 }
 
 struct command *promptForCommand() {
@@ -161,18 +167,30 @@ struct command *createCommand(char *currInput) {
         else if (strcmp(token, "&") == 0) {
             currCom->bgFlag = 1;
         }
-        else if(strcmp(token, "$$") == 0) {
-            currCom->pid = getpid();
-        }
+        else if(strstr(token, "$$") != NULL) {
+            char stringPID[512];
+            char **argsPtr = currCom->args;
+
+            strcpy(stringPID, token);
+            // sprintf(stringPID, "%d", getpid());      // Convert PID to string
+            currCom->args[argsIndex] = strdup(expOfPID(getpid(), stringPID, "$$")); 
+
+            printf("Testing $$ input: %s\n", argsPtr[argsIndex]);
+
+            argsIndex++;
+        }   
         else {
+            char **argsPtr = currCom->args;
+
             for (int i = 0 ; i < MAXARGS; i++) {
                 if ((currCom->args[i] = malloc(sizeof(char) * MAXLENGTH)) == NULL) {
                     printf("unable to allocate memory \n");
-                    return -1;
                 }
             }
             currCom->args[argsIndex] = calloc(strlen(token) + 1, sizeof(char));
             strcpy(currCom->args[argsIndex], token);
+
+            printf("args[%d] = %s\n", argsIndex, argsPtr[argsIndex]);
             argsIndex++;
         }
 
@@ -193,33 +211,22 @@ void exitCom() {
     exit (0);
 }
 
-int statusCom(int mode) {
-    int lastFgStatus = -5;
-    int status = 0;
+void statusCom(int status) {
+    // int lastFgStatus = -5;
+    int exitStatus = -10;
 
-    if (WIFEXITED(lastFgStatus) != 0){
+    if (!WIFEXITED(status)){
 
-        // the program exited wiht a value
-        status = WEXITSTATUS(lastFgStatus);
-
-        //print the value of the exit status
-        if (mode) {
-            printf("exit status %d\n", status);
-            fflush(stdout);
-        }
+        printf("terminated by signal %i\n", status);
+        fflush(stdout);
     }
     else {
 
-        //a signal killed that boi return the int, but dont set status
-        status = WTERMSIG(lastFgStatus);
-
-        if (mode){
-            printf("terminated by signal %d\n", status);
-            fflush(stdout);
-        }
+        exitStatus = WEXITSTATUS(status);
+        printf("exit value %i\n", exitStatus);
+        fflush(stdout);
 
     }
-    return status;
 }
 
 void cdCom(struct command *com) {
@@ -250,4 +257,49 @@ void cd(char * path) {
         chdir(path);
         return;
     }
+}
+
+char* expOfPID(int PID, const char* argStr, const char* orig) {
+    int i;
+    int indexCount = 0;
+    int count = 0;
+    int pidLength;
+    int originalLength;
+    char pid[100];
+    char *replacePID;
+
+    sprintf(pid, "%d", PID);                                                    /*Writes formatted data into a string.*/
+
+    pidLength = strlen(pid);
+    originalLength = strlen(orig);
+
+    for(i = 0; argStr[i] != '\0'; i++)                                  /*Loops through the string we desired and deletes the "$$" tokens.*/
+    {
+      if(strstr(&argStr[i], orig) == &argStr[i])            /*Checks for "$$" token*/
+      {
+        count++;
+        i += originalLength - 1;
+      }
+    }
+
+    replacePID = (char*)malloc(i + count * (pidLength - originalLength) + 1);
+
+    while(*argStr)                                                      /*Loops until the desired string has been created.*/
+    {
+      if(strstr(argStr, orig) == argStr)
+      {
+        strcpy(&replacePID[indexCount], pid);                                   /*Adds the PID to the end of the string wothout the "$$" tokens.*/
+        indexCount += pidLength;
+        argStr += originalLength;
+      }
+      else                                                                      /*If here then just keep moving through the string.*/
+      {
+        replacePID[indexCount++] = *argStr++;
+      }
+    }
+
+    replacePID[indexCount] = '\0';
+
+    printf("New string with PID: %s\n", replacePID);
+    return replacePID;                                                                    /*Return the new string.*/
 }
