@@ -19,13 +19,21 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <time.h> 
+#include <errno.h>
+#include <dirent.h>
+#include <pthread.h>
+#include <assert.h>
+#include <sys/wait.h>
+#include <signal.h>
+
 
 #define MAXLENGTH 2048
 #define MAXARGS 512
 
 /* Struct containing all the different elements included in a command */
 struct command {
-    char *args;
+    char *args[MAXARGS];
     char *inputFile;
     char *outputFile;
     int bgFlag;
@@ -37,4 +45,9 @@ struct command *createCommand(char *currLine);
 struct command *destroyCommand();
 void startSmallSh();
 struct command *promptForCommand();
+int statusCom(int mode);
+void exitCom();
+void cdCom(struct command *com);
+void cd(char * path);
+
 #endif

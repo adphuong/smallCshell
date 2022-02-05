@@ -54,15 +54,42 @@
 
 void startSmallSh() {
     struct command *com;                 // Instantiate our command struct
-    // char *argsArr[512];
+    int lastFgStatus = -5;    
 
     com = promptForCommand();
-    printf("userInput = %s\n", com->args);
+    
+    int i = 0;
+    char **argsPtr = com->args;
+    while (*(com->args[i]) != NULL) {
+        printf("ARG = %s\n", argsPtr[i]);         // DELETE
+        i++;
+    }
+    printf("pid = %d\n", com->pid);               // DELETE
+    printf("inputFile = %s\n", com->inputFile);   // DELETE
+    printf("outFile = %s\n", com->outputFile);   // DELETE
+    printf("bgFlag = %d\n", com->bgFlag);         // DELETE
+
+
+    //check if we need to use a builtin
+    if ( (strcmp(argsPtr[0], "exit") == 0)   || 
+         (strcmp(argsPtr[0], "status") == 0) || 
+         (strcmp(argsPtr[0], "cd") == 0)){
+
+        if ((strcmp(argsPtr[0], "exit") == 0)){
+            exitCom();
+        }
+        else if ((strcmp(argsPtr[0], "status") == 0)){
+            lastFgStatus = statusCom(1);
+        }
+        else if ((strcmp(argsPtr[0], "cd") == 0)){
+            printf("%s\n", argsPtr[0]);
+            cdCom(com);
+        }
+    }
 }
 
 struct command *promptForCommand() {
     char userInput[2048];
-    size_t len = 0;
     size_t nread = 0;
     int commandIndex = 0;
 
@@ -116,18 +143,19 @@ struct command *createCommand(char *currInput) {
     struct command *currCom = malloc(sizeof(struct command));
     // char *saveptr = NULL;
     char *token = NULL;
+    int argsIndex = 0;
 
     token = strtok(currInput, " \n");
 
 	while (token != NULL) {
         if (strcmp(token, ">") == 0) {
             token = strtok(NULL, " \n");
-            currCom->outputFile = calloc(strlen(token) + 2, sizeof(char));
+            currCom->outputFile = calloc(strlen(token) + 1, sizeof(char));
             strcpy(currCom->outputFile, token);
         }
         else if (strcmp(token, "<") == 0) {
             token = strtok(NULL, " \n");
-            currCom->inputFile = calloc(strlen(token) + 2, sizeof(char));
+            currCom->inputFile = calloc(strlen(token) + 1, sizeof(char));
             strcpy(currCom->inputFile, token);
         }
         else if (strcmp(token, "&") == 0) {
@@ -137,8 +165,15 @@ struct command *createCommand(char *currInput) {
             currCom->pid = getpid();
         }
         else {
-            currCom->args = calloc(strlen(token) + 2, sizeof(char));
-            strcpy(currCom->args, token);
+            for (int i = 0 ; i < MAXARGS; i++) {
+                if ((currCom->args[i] = malloc(sizeof(char) * MAXLENGTH)) == NULL) {
+                    printf("unable to allocate memory \n");
+                    return -1;
+                }
+            }
+            currCom->args[argsIndex] = calloc(strlen(token) + 1, sizeof(char));
+            strcpy(currCom->args[argsIndex], token);
+            argsIndex++;
         }
 
 
@@ -149,4 +184,70 @@ struct command *createCommand(char *currInput) {
     currCom->next = NULL;
 
     return currCom;
+}
+
+/******************************** Built-in Commands *********************************/
+void exitCom() {
+
+    //exit the shell
+    exit (0);
+}
+
+int statusCom(int mode) {
+    int lastFgStatus = -5;
+    int status = 0;
+
+    if (WIFEXITED(lastFgStatus) != 0){
+
+        // the program exited wiht a value
+        status = WEXITSTATUS(lastFgStatus);
+
+        //print the value of the exit status
+        if (mode) {
+            printf("exit status %d\n", status);
+            fflush(stdout);
+        }
+    }
+    else {
+
+        //a signal killed that boi return the int, but dont set status
+        status = WTERMSIG(lastFgStatus);
+
+        if (mode){
+            printf("terminated by signal %d\n", status);
+            fflush(stdout);
+        }
+
+    }
+    return status;
+}
+
+void cdCom(struct command *com) {
+    char **argsPtr = com->args;
+
+    if (strcmp(argsPtr[1], " \n")) {
+        cd(getenv("HOME"));
+    }
+    else {
+        cd(argsPtr[1]);
+    }
+}
+
+void cd(char * path) {
+
+    // printf("===== [cd] = Called with path %s.\n", path);
+    // fflush(stdout);
+
+    if (chdir(path) != 0){
+
+        printf("cd: no such file or directory: %s\n", path);
+        fflush(stdout);
+        return;
+    }
+
+    else{
+
+        chdir(path);
+        return;
+    }
 }
