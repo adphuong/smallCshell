@@ -62,11 +62,11 @@ void startSmallSh() {
 
         char **argsPtr = com->args;
         printf("\n");
-        printf("pid = %d\n", com->pid);               // DELETE
         printf("inputFile = %s\n", com->inputFile);   // DELETE
         printf("outFile = %s\n", com->outputFile);   // DELETE
         printf("bgFlag = %d\n", com->bgFlag);         // DELETE
         printf("\n");
+        fflush(stdout);
 
         //check if we need to use a builtin
         if ( (strcmp(argsPtr[0], "exit") == 0)   || 
@@ -75,6 +75,7 @@ void startSmallSh() {
 
             if ((strcmp(argsPtr[0], "exit") == 0)){
                 printf("now exiting\n");        //DELETE
+                fflush(stdout);
                 runShell = 0;
                 exitCom();
 
@@ -83,13 +84,13 @@ void startSmallSh() {
                 statusCom(status);
             }
             else if ((strcmp(argsPtr[0], "cd") == 0)){
-                printf("%s\n", argsPtr[0]);      //DELETE
                 cdCom(com);
             }
         }
         else if(strcmp(argsPtr[0], "echo") == 0 && argsPtr[1] != NULL && 
                 strcmp(argsPtr[1], "$$") == 0){
-            printf("%d\n", com->pid);
+            printf("%d\n", getpid());
+            fflush(stdout);
         }
     }    
 }
@@ -114,7 +115,7 @@ struct command *promptForCommand() {
 		fflush(stdout);
 
 		//read input from
-		nread = fgets(userInput, MAXLENGTH, stdin);
+		nread = (size_t) fgets(userInput, MAXLENGTH, stdin);
 	}
 
     // Read the file line by line
@@ -172,10 +173,10 @@ struct command *createCommand(char *currInput) {
             char **argsPtr = currCom->args;
 
             strcpy(stringPID, token);
-            // sprintf(stringPID, "%d", getpid());      // Convert PID to string
             currCom->args[argsIndex] = strdup(expOfPID(getpid(), stringPID, "$$")); 
 
-            printf("Testing $$ input: %s\n", argsPtr[argsIndex]);
+            printf("%s\n", argsPtr[argsIndex]);       //DELETE
+            fflush(stdout);
 
             argsIndex++;
         }   
@@ -185,12 +186,15 @@ struct command *createCommand(char *currInput) {
             for (int i = 0 ; i < MAXARGS; i++) {
                 if ((currCom->args[i] = malloc(sizeof(char) * MAXLENGTH)) == NULL) {
                     printf("unable to allocate memory \n");
+                    fflush(stdout);
                 }
             }
             currCom->args[argsIndex] = calloc(strlen(token) + 1, sizeof(char));
             strcpy(currCom->args[argsIndex], token);
 
             printf("args[%d] = %s\n", argsIndex, argsPtr[argsIndex]);
+            fflush(stdout);
+
             argsIndex++;
         }
 
@@ -260,46 +264,55 @@ void cd(char * path) {
 }
 
 char* expOfPID(int PID, const char* argStr, const char* orig) {
+    int pidLen;
+    int origLen;
+    char spid[100];
+    char *stringPID;
+
+    // Convert PID to string
+    sprintf(spid, "%d", PID);                                                    
+
+    // Get the length of converted PID and the '$$' (orig)
+    origLen = strlen(orig);
+    pidLen = strlen(spid);
+
+
     int i;
-    int indexCount = 0;
+    int indCount = 0;
     int count = 0;
-    int pidLength;
-    int originalLength;
-    char pid[100];
-    char *replacePID;
 
-    sprintf(pid, "%d", PID);                                                    /*Writes formatted data into a string.*/
+    // Traverse the string that's passed in and delete the '$$'
+    for(i = 0; argStr[i] != '\0'; i++) {
+        // Check for the '$$' and remove it
+        if(strstr(&argStr[i], orig) == &argStr[i]) {
+            i = i + origLen - 1;
 
-    pidLength = strlen(pid);
-    originalLength = strlen(orig);
-
-    for(i = 0; argStr[i] != '\0'; i++)                                  /*Loops through the string we desired and deletes the "$$" tokens.*/
-    {
-      if(strstr(&argStr[i], orig) == &argStr[i])            /*Checks for "$$" token*/
-      {
-        count++;
-        i += originalLength - 1;
-      }
+            count++;
+        }
     }
 
-    replacePID = (char*)malloc(i + count * (pidLength - originalLength) + 1);
+    stringPID = (char*)malloc(i + count * (pidLen - origLen) + 1);
 
-    while(*argStr)                                                      /*Loops until the desired string has been created.*/
-    {
-      if(strstr(argStr, orig) == argStr)
-      {
-        strcpy(&replacePID[indexCount], pid);                                   /*Adds the PID to the end of the string wothout the "$$" tokens.*/
-        indexCount += pidLength;
-        argStr += originalLength;
-      }
-      else                                                                      /*If here then just keep moving through the string.*/
-      {
-        replacePID[indexCount++] = *argStr++;
-      }
+    // This is where we store the new string with the PID nums
+    while(*argStr) {
+        // Add PID to the end of the string, without the '$$'
+        if(strstr(argStr, orig) == argStr) {
+            strcpy(&stringPID[indCount], spid);
+
+            // Take into account the newly added strings
+            indCount = indCount + pidLen;
+            argStr = argStr + origLen;
+        }
+      // If here then just keep moving through the string.*/
+        else {
+            stringPID[indCount] = *argStr;
+
+            indCount++;
+            argStr++;
+        }
     }
 
-    replacePID[indexCount] = '\0';
+    stringPID[indCount] = '\0';
 
-    printf("New string with PID: %s\n", replacePID);
-    return replacePID;                                                                    /*Return the new string.*/
+    return stringPID;
 }
