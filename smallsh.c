@@ -41,7 +41,7 @@ void startSmallSh() {
 
     sigTSTP_action.sa_handler = catchSIGTSTP;
     sigfillset(&sigTSTP_action.sa_mask);
-    sigTSTP_action.sa_flags = 0;
+    sigTSTP_action.sa_flags = SA_RESTART;
 
     sigaction(SIGINT, &sigINT_action, NULL);
     sigaction(SIGTSTP, &sigTSTP_action, NULL);
@@ -162,7 +162,6 @@ struct command *createCommand(char *currInput) {
         }
         else if (strcmp(token, "&") == 0) {
             currCom->bgFlag = 1;
-            bgTracker = 1;
         }
         else if(strstr(token, "$$") != NULL) {
             char stringPID[512];
@@ -444,21 +443,21 @@ void executeCommand(struct command *com, struct sigaction sigINT_action) {
                 waitpid(spawnPID, &status, 0);
             }
             break;
-    } 
-    pid_t childPID_exit = waitpid(-1, &status, WNOHANG);
+    }
+    
+    spawnPID = waitpid(-1, &status, WNOHANG);
 
     // Continue until all background processes have completed
-    while (childPID_exit > 0) {
-        printf("background pid %d is done: ", childPID_exit);
+    while (spawnPID > 0) {
+        printf("background pid %d is done: ", spawnPID);
         fflush(stdout);
 
         // Get exit status and print
         statusCommand(status);
 
         // Get next child process
-        childPID_exit = waitpid(-1, &status, WNOHANG);
+        spawnPID = waitpid(-1, &status, WNOHANG);
     }
-    
 }
 
 
