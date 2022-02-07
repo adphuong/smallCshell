@@ -56,7 +56,7 @@ void executeCommand(struct command *com, struct sigaction sigINT_action);
 void exitCommand();
 char *expOfPID(int PID, const char* argStr, const char* orig);
 struct command *promptForCommand();
-void startSmallSh();
+void startSmallSh(struct command *com);
 void statusCommand(int childExitMethod);
 
 

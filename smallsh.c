@@ -54,14 +54,14 @@ void catchSIGTSTP(int signo) {
     if (bgEnabled == 0) {
         // Background process is allowed to run
         bgEnabled = 1;
-        char *exitFgMsg = "Exiting foreground-only mode.\n";
-        write(1, exitFgMsg, 30);
+        char *exitFgMsg = "Exiting foreground-only mode\n";
+        write(1, exitFgMsg, 29);
     }
     else {
         // Background process is not allowed
         bgEnabled = 0;
         char *enterFgMsg = "Entering foreground-only mode (& is now ignored)\n";
-        write(1, enterFgMsg, 48);  
+        write(1, enterFgMsg, 49);  
     }
 }
 
@@ -273,11 +273,12 @@ void executeCommand(struct command *com, struct sigaction sigINT_action) {
                 fflush(stdout);
                 // status = 1;
 
-                _exit(1);
+                _exit(2);
             }
 
-            exit(0);
             break;
+            // exit(0);
+            
         // Parent process is here
         default:
             // This will launch background process if both vars are true
@@ -296,11 +297,9 @@ void executeCommand(struct command *com, struct sigaction sigINT_action) {
             }
             break;
     }
-    
-    spawnPID = waitpid(-1, &status, WNOHANG);
 
-    // Continue until all background processes have completed
-    while (spawnPID > 0) {
+    // Check for background processes that have terminated
+    while ( (spawnPID = waitpid(-1, &status, WNOHANG)) > 0) {
         printf("background pid %d is done: ", spawnPID);
         fflush(stdout);
 
@@ -308,7 +307,7 @@ void executeCommand(struct command *com, struct sigaction sigINT_action) {
         statusCommand(status);
 
         // Get next child process
-        spawnPID = waitpid(-1, &status, WNOHANG);
+        // spawnPID = waitpid(-1, &status, WNOHANG);
     }
 }
 
