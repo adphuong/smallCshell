@@ -32,6 +32,7 @@
 #define MAXARGS 512
 #define ERR -1
 
+// Global Vars
 int bgTracker = 1;
 int status = 0;
 
@@ -46,17 +47,18 @@ struct command {
     struct command *next;
 };
 
-struct command *createCommand(char *currLine);
-struct command *destroyCommand();
-void startSmallSh();
-struct command *promptForCommand();
-void statusCommand(int childExitMethod);
-void exitCommand();
-void cdCommand(struct command *com);
-void cd(char * path);
-char* expOfPID(int PID, const char* argStr, const char* orig);
-void executeCommand(struct command *com, struct sigaction sigINT_action);
+// Function prototypes
 void catchSIGINT(int signo);
 void catchSIGTSTP(int signo);
+void cdCommand(struct command *com);
+struct command *createCommand(char *currLine);
+struct command *destroyCommand();
+void executeCommand(struct command *com, struct sigaction sigINT_action);
+void exitCommand();
+char *expOfPID(int PID, const char* argStr, const char* orig);
+struct command *promptForCommand();
+void startSmallSh();
+void statusCommand(int childExitMethod);
+
 
 #endif

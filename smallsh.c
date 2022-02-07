@@ -2,40 +2,37 @@
  *  File:           smallsh.c
  *  Assignment:     03 - smallsh
  *  Author:         April Phuong
- *  Date:           January 26, 2022
+ *  Date:           February 7, 2022
  *  Description:    This file contains the following functions used for the
  *                  program (in alphabetical order):
- *                      createMovie()
- *                      createDir()
- *                      executeMainMenu()
- *                      executeSubMenu()
- *                      freeMemory()
- *                      findFile()
- *                      findSmallestBiggestFile()
- *                      getFileName()
- *                      getMainMenuChoice()
- *                      getSubMenuChoice()
- *                      printMainMenu()
- *                      printSubMenu()
- *                      processFile()
+ *                      catchSIGINT();
+ *                      catchSIGTSTP();
+ *                      cdCommand();
+ *                      createCommand();
+ *                      destroyCommand();
+ *                      executeCommand();
+ *                      exitCommand();
+ *                      expOfPID();
+ *                      promptForCommand();
+ *                      startSmallSh();
+ *                      statusCommand();
  ****************************************************************************/
 
 #include "smallsh.h"
 
-/*****************************************************************************
- * Parse the current line (which is space delimited) and create a
- * movie struct with the data processed from this line
- *
- * @params:   pointer to address of current line of file
- * @returns:  struct containing the data of the movie that was just parsed
- * source:    https://replit.com/@cs344/studentsc#main.c
- ****************************************************************************/
 
+/*****************************************************************************
+ * Sets up our struct command and signal handlers, then runs our smallsh with
+ * the command entered by the user.
+ *
+ * @params:   none
+ * @returns:  none
+ ****************************************************************************/
 void startSmallSh() {
     struct command *com;                 // Instantiate our command struct
     int runShell = 1;
 
-    // Set up sigaction
+    // Set up sigaction - this was taken from SIGNALS module
     struct sigaction sigINT_action = {{0}}, sigTSTP_action = {{0}};
 
     sigINT_action.sa_handler = catchSIGINT;
@@ -78,6 +75,14 @@ void startSmallSh() {
     }    
 }
 
+
+/*****************************************************************************
+ * Prompts user for command, creates a new command struct, and returns 
+ * this new struct
+ *
+ * @params:   none
+ * @returns:  struct command with elements entered by user
+ ****************************************************************************/
 struct command *promptForCommand() {
     char userInput[2048];
     size_t nread = 0;
@@ -89,23 +94,25 @@ struct command *promptForCommand() {
     printf(": ");
     fflush(stdout);
 
+    // Get user command
     fgets(userInput, MAXLENGTH, stdin);
-    //if there's nothing, repeat until there is *something*
+
+    // Keep prompting user for command if blank lines or '#' entered,
+    // these be ignored by the shell
 	while (strcmp(userInput, "\n") == 0 || userInput[0] == '#'){
 		//print out the prompt for the user
 		printf(": ");
 		fflush(stdout);
 
-		//read input from
+		// Read input from
 		nread = (size_t) fgets(userInput, MAXLENGTH, stdin);
 	}
 
-    // Read the file line by line
+    // If read was successful, we create new struct command
     if (nread != -1) {
 
-        // Get a new movie node corresponding to the current line
+        // Get a new command node corresponding to the command entered
         struct command *newNode = createCommand(userInput);
-        // commandIndex++;
 
         // If head is the first node of the list
         if (head == NULL) {
@@ -122,15 +129,21 @@ struct command *promptForCommand() {
         }
     }
 
-    // printf("input is: %s\n", userInput);
-
     return head;
 }
 
+
+/*****************************************************************************
+ * Create our new struct command that will hold all the elements entered
+ * by the user - arguments (up to 512), inputFile, outputFile, bgFlag, and
+ * argsIndex (keeps track of num of args entered).
+ *
+ * @params:   c-string pointer of input (command) entered by user
+ * @returns:  struct command
+ ****************************************************************************/
 struct command *createCommand(char *currInput) {
     // Initialize our values
     struct command *currCom = malloc(sizeof(struct command));
-    // char *saveptr = NULL;
     char *token = NULL;
     int argsIndex = 0;
 
@@ -149,6 +162,7 @@ struct command *createCommand(char *currInput) {
         }
         else if (strcmp(token, "&") == 0) {
             currCom->bgFlag = 1;
+            bgTracker = 1;
         }
         else if(strstr(token, "$$") != NULL) {
             char stringPID[512];
@@ -163,41 +177,47 @@ struct command *createCommand(char *currInput) {
             argsIndex++;
         }   
         else {
-            // char **argsPtr = currCom->args;
-
-            // for (int i = 0 ; i < commandIndex; i++) {
-            //     if ((currCom->args[i] = malloc(sizeof(char) * MAXLENGTH)) == NULL) {
-            //         printf("unable to allocate memory \n");
-            //         fflush(stdout);
-            //     }
-            // }
+            // This is an argument, so we allocate memory and store it in our 
+            // args array in our struct command
             currCom->args[argsIndex] = calloc(strlen(token) + 1, sizeof(char));
             strcpy(currCom->args[argsIndex], token);
 
-            // printf("args[%d] = %s\n", argsIndex, argsPtr[argsIndex]);
-            // fflush(stdout);
-
+            // Increment count for num of args and save this in our command struct
             argsIndex++;
             currCom->argsIndex = argsIndex;
         }
-
-
         token = strtok(NULL, " \n");
     }
 
-    // Set the next node to NULL in the newly created student entry
+    // Set the next node to NULL in the newly created command
     currCom->next = NULL;
 
     return currCom;
 }
 
-/******************************** Built-in Commands *********************************/
+
+/*****************************************************************************
+ * This is a built-in command. If user enters 'exit', this will exit our
+ * smallsh program.
+ *
+ * @params:   none
+ * @returns:  none
+ ****************************************************************************/
 void exitCommand() {
 
     // Exit the shell
     exit (0);
 }
 
+
+/*****************************************************************************
+ * This is a built-in command.
+ * Prints out either the exit status or the terminating signal of the last
+ * foreground process ran by our shell.
+ *
+ * @params:   int indicating the status
+ * @returns:  none
+ ****************************************************************************/
 void statusCommand(int status) {
     int exitStatus = 0;
 
@@ -218,6 +238,13 @@ void statusCommand(int status) {
     }
 }
 
+
+/*****************************************************************************
+ * This is a built-in command. It changes the working directory of smallsh.
+ *
+ * @params:   struct command
+ * @returns:  none
+ ****************************************************************************/
 void cdCommand(struct command *com) {
     char **argsPtr = com->args;
 
@@ -229,25 +256,16 @@ void cdCommand(struct command *com) {
     }
 }
 
-void cd(char * path) {
 
-    // printf("===== [cd] = Called with path %s.\n", path);
-    // fflush(stdout);
-
-    if (chdir(path) != 0){
-
-        
-        return;
-    }
-
-    else{
-
-        chdir(path);
-        return;
-    }
-}
-
-char* expOfPID(int PID, const char* argStr, const char* orig) {
+/*****************************************************************************
+ * Expands the '$$' in a command into the process ID of the smallsh itself.
+ *
+ * @params:   int PID - PID of smallsh
+ *            pointer to cstring argStr - input entered by user with the '$$' 
+ *            pointer to cstring orig - original input
+ * @returns:  pointer to cstring with the '$$' expanded
+ ****************************************************************************/
+char *expOfPID(int PID, const char* argStr, const char* orig) {
     int pidLen;
     int origLen;
     char spid[100];
@@ -260,14 +278,13 @@ char* expOfPID(int PID, const char* argStr, const char* orig) {
     origLen = strlen(orig);
     pidLen = strlen(spid);
 
-
     int i;
     int indCount = 0;
     int count = 0;
 
-    // Traverse the string that's passed in and delete the '$$'
+    // Traverse the string that is passed in and remove the '$$'
     for(i = 0; argStr[i] != '\0'; i++) {
-        // Check for the '$$' and remove it
+        // Check for the '$$' and remove it by updating counters
         if(strstr(&argStr[i], orig) == &argStr[i]) {
             i = i + origLen - 1;
 
@@ -277,7 +294,7 @@ char* expOfPID(int PID, const char* argStr, const char* orig) {
 
     stringPID = (char*)malloc(i + count * (pidLen - origLen) + 1);
 
-    // This is where we store the new string with the PID nums
+    // Store the new string with the PID (without the '$$')
     while(*argStr) {
         // Add PID to the end of the string, without the '$$'
         if(strstr(argStr, orig) == argStr) {
@@ -287,7 +304,7 @@ char* expOfPID(int PID, const char* argStr, const char* orig) {
             indCount = indCount + pidLen;
             argStr = argStr + origLen;
         }
-      // If here then just keep moving through the string.*/
+        // Continue traversing through the string
         else {
             stringPID[indCount] = *argStr;
 
@@ -296,34 +313,44 @@ char* expOfPID(int PID, const char* argStr, const char* orig) {
         }
     }
 
+    // Add NULL to end of array
     stringPID[indCount] = '\0';
 
     return stringPID;
 }
 
+
+/*****************************************************************************
+ * When a non-built in command is received, smallsh will fork off a child,
+ * and the child will use execvp() to run the command
+ *
+ * @params:   command struct and signal handler for SIGINT
+ * @returns:  none
+ ****************************************************************************/
 void executeCommand(struct command *com, struct sigaction sigINT_action) {
     int execStatus = 0;
     int result = 0;
     pid_t spawnPID = fork();
     char **argsPtr = com->args;
 
+    // Determines if fork was successful and acts accordingly
     switch(spawnPID) {
+        // Fork failed, print error and set status to 1
         case -1:
             perror("Error! Failed to fork.\n");
             fflush(stdout);
             status = 1;
 
             break;
+        // Fork Successful, child will execvp() command
         case 0:
-            // Fork successful
-
-            // If there is no bg flag, child will get default sigint
+            // If there is no bg flag, child will get default SIGINT
             if (com->bgFlag == 0) {
                 sigINT_action.sa_handler = SIG_DFL;
                 sigaction(SIGINT, &sigINT_action, NULL);
             }
 
-            // Need to set redirection for stdout before calling exec
+            // Set redirection for stdout before calling exec
             if (com->outputFile != NULL) {
 
                 // Open our target file
@@ -333,7 +360,7 @@ void executeCommand(struct command *com, struct sigaction sigINT_action) {
                 if (targetFD == -1) {
                     printf("%s: no such file or directory\n", argsPtr[0]);
                     fflush(stdout);
-                    status = 1;
+                    // status = 1;
 
                     _exit(1);
                 }
@@ -352,8 +379,9 @@ void executeCommand(struct command *com, struct sigaction sigINT_action) {
                 fcntl(targetFD, F_SETFD, FD_CLOEXEC);
             }
 
-            // Need to set redirection for stdin before calling exec
+            // Set redirection for stdin before calling exec
             if (com->inputFile != NULL) {
+
                 // Open our source file
                 int sourceFD = open(com->inputFile, O_RDONLY);
 
@@ -361,17 +389,19 @@ void executeCommand(struct command *com, struct sigaction sigINT_action) {
                 if (sourceFD == -1) {
                     printf("cannot open %s for input\n", argsPtr[0]);
                     fflush(stdout);
-                    status = 1;
+                    // status = 1;
 
                     _exit(1);
                 }
 
                 // Redirect our stdin (0) to sourceFD
                 result = dup2(sourceFD, 0);
+
+                // dup2 error, set status to 1 and exit
                 if (result == -1) {
                     perror("Error! dup2 failed to redirect\n");
                     fflush(stdout);
-                    status = 1;
+                    // status = 1;
                     _exit(1);
                 }
 
@@ -382,53 +412,85 @@ void executeCommand(struct command *com, struct sigaction sigINT_action) {
             execStatus = 0;
             int aIndex = com->argsIndex;
             argsPtr[aIndex] = NULL;
-            // printf("Righbe before exec. args[0]: %s\n", argsPtr[0]);        //Delete
+
+            // Execute non-built in command
             execStatus = execvp(argsPtr[0], argsPtr);
 
             // Check for error
             if (execStatus == -1) {
                 printf("%s: no such file or directory\n", argsPtr[0]);
                 fflush(stdout);
-                status = 1;
+                // status = 1;
 
                 _exit(1);
             }
 
             exit(0);
             break;
+        // Parent process is here
         default:
-            // Parent process here
-
-            // This will launch background process
-            if (com->bgFlag && bgTracker) {
+            // This will launch background process if both vars are true
+            if (com->bgFlag == 1 && bgTracker == 1) {
+                // Prevents from blocking so that parent process can go on 
+                // with other tasks while child process is still running. 
+                // If child dies, its PID will be returned
                 waitpid(spawnPID, &status, WNOHANG);
                 printf("background pid is %d\n", spawnPID);
                 fflush(stdout);
             }
             else {
-                // Otherwise, we launch a foreground process
+                // Otherwise, we launch a foreground process - we do
+                // nothing while child process is running
                 waitpid(spawnPID, &status, 0);
             }
             break;
     } 
     pid_t childPID_exit = waitpid(-1, &status, WNOHANG);
 
+    // Continue until all background processes have completed
     while (childPID_exit > 0) {
         printf("background pid %d is done: ", childPID_exit);
         fflush(stdout);
+
+        // Get exit status and print
         statusCommand(status);
 
+        // Get next child process
         childPID_exit = waitpid(-1, &status, WNOHANG);
     }
     
 }
 
+
+/*****************************************************************************
+ * Custom handler for the CTRL-C command (SIGINT). Only the child running
+ * as a foreground process will terminate itself when this SIGINT is 
+ * received. The parent process and any children running in the background
+ * will ignore this signal. 
+ *
+ * @params:   int signo - signal number
+ * @returns:  none
+ ****************************************************************************/
 void catchSIGINT(int signo) {
-    char *message = "terminated by signal 2\n";
-    write(1, message, 23);
+
+    char *message = "terminated by signal 2";
+    write(1, message, 22);
+    
+    printf("\n");
+    fflush(stdout);
 }
 
 
+/*****************************************************************************
+ * Custom handler for the CTRL-Z command (SIGTSTP). Only the parent process 
+ * running the shell will receive this signal. Shell will display an
+ * informative message and enters a state where commands will no longer be 
+ * run in the background ('&' is ignored). All commands will run as 
+ * foreground processes.
+ *
+ * @params:   int signo - signal number
+ * @returns:  none
+ ****************************************************************************/
 void catchSIGTSTP(int signo) {
     switch(bgTracker) {
         case 0:
