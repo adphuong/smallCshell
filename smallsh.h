@@ -33,7 +33,7 @@
 #define ERR -1
 
 // Global Vars
-int bgTracker = 1;
+int bgEnabled = 1;
 int status = 0;
 
 /* Struct containing all the different elements included in a command */

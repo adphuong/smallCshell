@@ -37,7 +37,7 @@ void startSmallSh() {
 
     sigINT_action.sa_handler = catchSIGINT;
     sigfillset(&sigINT_action.sa_mask);
-    sigINT_action.sa_flags = 0;
+    sigINT_action.sa_flags = SA_RESTART;
 
     sigTSTP_action.sa_handler = catchSIGTSTP;
     sigfillset(&sigTSTP_action.sa_mask);
@@ -344,7 +344,7 @@ void executeCommand(struct command *com, struct sigaction sigINT_action) {
         // Fork Successful, child will execvp() command
         case 0:
             // If there is no bg flag, child will get default SIGINT
-            if (com->bgFlag == 0) {
+            if (com->bgFlag == 0 || bgEnabled == 0) {
                 sigINT_action.sa_handler = SIG_DFL;
                 sigaction(SIGINT, &sigINT_action, NULL);
             }
@@ -429,7 +429,7 @@ void executeCommand(struct command *com, struct sigaction sigINT_action) {
         // Parent process is here
         default:
             // This will launch background process if both vars are true
-            if (com->bgFlag == 1 && bgTracker == 1) {
+            if (com->bgFlag == 1 && bgEnabled == 1) {
                 // Prevents from blocking so that parent process can go on 
                 // with other tasks while child process is still running. 
                 // If child dies, its PID will be returned
@@ -491,19 +491,16 @@ void catchSIGINT(int signo) {
  * @returns:  none
  ****************************************************************************/
 void catchSIGTSTP(int signo) {
-    switch(bgTracker) {
-        case 0:
-            // Background process is allowed to run
-            bgTracker = 1;
-            char *exitFgMsg = "Exiting foreground-only mode.\n";
-            write(1, exitFgMsg, 30);
-
-            break;
-        case 1:
-            // Background process is not allowed
-            bgTracker = 0;
-            char *enterFgMsg = "Entering foreground-only mode (& is no ignored)\n";
-            write(1, enterFgMsg, 48);
-            break;
+    if (bgEnabled == 0) {
+        // Background process is allowed to run
+        bgEnabled = 1;
+        char *exitFgMsg = "Exiting foreground-only mode.\n";
+        write(1, exitFgMsg, 30);
+    }
+    else {
+        // Background process is not allowed
+        bgEnabled = 0;
+        char *enterFgMsg = "Entering foreground-only mode (& is now ignored)\n";
+        write(1, enterFgMsg, 48);  
     }
 }
