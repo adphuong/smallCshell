@@ -32,6 +32,9 @@
 #define MAXARGS 512
 #define ERR -1
 
+int bgTracker = 1;
+int status = 0;
+
 /* Struct containing all the different elements included in a command */
 struct command {
     char *args[MAXARGS];
@@ -39,6 +42,7 @@ struct command {
     char *outputFile;
     int bgFlag;
     int pid;
+    int argsIndex;
     struct command *next;
 };
 
@@ -46,9 +50,13 @@ struct command *createCommand(char *currLine);
 struct command *destroyCommand();
 void startSmallSh();
 struct command *promptForCommand();
-void statusCom(int mode);
-void exitCom();
-void cdCom(struct command *com);
+void statusCommand(int childExitMethod);
+void exitCommand();
+void cdCommand(struct command *com);
 void cd(char * path);
 char* expOfPID(int PID, const char* argStr, const char* orig);
+void executeCommand(struct command *com, struct sigaction sigINT_action);
+void catchSIGINT(int signo);
+void catchSIGTSTP(int signo);
+
 #endif
