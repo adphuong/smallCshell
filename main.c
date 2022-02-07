@@ -16,21 +16,13 @@
 #include "smallsh.c"
 
 int main(int argc, char *argv[]) {
-    startSmallSh();
+    struct command *com = malloc(sizeof(struct command));;                 // Instantiate our command struct
 
-    // pid_t spawnpid = fork();
+    startSmallSh(com);
 
-    // // Use for exec()
-    // switch (spawnpid) {
-    //     case -1:
-    //         perror("Error. Fork failed.");
-    //         break;
-    //     case 0:
-    //         printf("I am the child\n");         // DELETE
-    //         break;
-    //     default:
-    //         printf("I am the parent of %d\n", spawnpid);     // DELETE
-    // }
+    destroyCommand(com);
+
+    free(com);
 
     return EXIT_SUCCESS;
 }

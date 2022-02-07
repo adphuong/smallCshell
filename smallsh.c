@@ -22,114 +22,64 @@
 
 
 /*****************************************************************************
- * Sets up our struct command and signal handlers, then runs our smallsh with
- * the command entered by the user.
+ * Custom handler for the CTRL-C command (SIGINT). Only the child running
+ * as a foreground process will terminate itself when this SIGINT is 
+ * received. The parent process and any children running in the background
+ * will ignore this signal. 
  *
- * @params:   none
+ * @params:   int signo - signal number
  * @returns:  none
  ****************************************************************************/
-void startSmallSh() {
-    struct command *com;                 // Instantiate our command struct
-    int runShell = 1;
+void catchSIGINT(int signo) {
 
-    // Set up sigaction - this was taken from SIGNALS module
-    struct sigaction sigINT_action = {{0}}, sigTSTP_action = {{0}};
-
-    sigINT_action.sa_handler = catchSIGINT;
-    sigfillset(&sigINT_action.sa_mask);
-    sigINT_action.sa_flags = SA_RESTART;
-
-    sigTSTP_action.sa_handler = catchSIGTSTP;
-    sigfillset(&sigTSTP_action.sa_mask);
-    sigTSTP_action.sa_flags = SA_RESTART;
-
-    sigaction(SIGINT, &sigINT_action, NULL);
-    sigaction(SIGTSTP, &sigTSTP_action, NULL);
-
-    while (runShell == 1) { 
-        // Prompt for command and store in our command struct
-        com = promptForCommand();
-        char **argsPtr = com->args;
-
-        //check if we need to use a builtin
-        if ( (strcmp(argsPtr[0], "exit") == 0)   || 
-             (strcmp(argsPtr[0], "status") == 0) || 
-             (strcmp(argsPtr[0], "cd") == 0)){
-
-            if ((strcmp(argsPtr[0], "exit") == 0)){
-                fflush(stdout);
-                runShell = 0;
-                exitCommand();
-
-            }
-            else if ((strcmp(argsPtr[0], "status") == 0)){
-                statusCommand(status);
-            }
-            else if ((strcmp(argsPtr[0], "cd") == 0)){
-                cdCommand(com);
-            }
-        }
-        else {
-            executeCommand(com, sigINT_action);
-        }
-    }    
+    char *message = "terminated by signal 2";
+    write(1, message, 22);
+    
+    printf("\n");
+    fflush(stdout);
 }
 
 
 /*****************************************************************************
- * Prompts user for command, creates a new command struct, and returns 
- * this new struct
+ * Custom handler for the CTRL-Z command (SIGTSTP). Only the parent process 
+ * running the shell will receive this signal. Shell will display an
+ * informative message and enters a state where commands will no longer be 
+ * run in the background ('&' is ignored). All commands will run as 
+ * foreground processes.
  *
- * @params:   none
- * @returns:  struct command with elements entered by user
+ * @params:   int signo - signal number
+ * @returns:  none
  ****************************************************************************/
-struct command *promptForCommand() {
-    char userInput[2048];
-    size_t nread = 0;
-
-    struct command *head = NULL;      // The head of the linked list
-    struct command *tail = NULL;      // The tail of the linked list
-
-    // Prompt user for input and store in variable
-    printf(": ");
-    fflush(stdout);
-
-    // Get user command
-    fgets(userInput, MAXLENGTH, stdin);
-
-    // Keep prompting user for command if blank lines or '#' entered,
-    // these be ignored by the shell
-	while (strcmp(userInput, "\n") == 0 || userInput[0] == '#'){
-		//print out the prompt for the user
-		printf(": ");
-		fflush(stdout);
-
-		// Read input from
-		nread = (size_t) fgets(userInput, MAXLENGTH, stdin);
-	}
-
-    // If read was successful, we create new struct command
-    if (nread != -1) {
-
-        // Get a new command node corresponding to the command entered
-        struct command *newNode = createCommand(userInput);
-
-        // If head is the first node of the list
-        if (head == NULL) {
-            // This is the first node in the linked list
-            // Set the head and the tail to this node
-            head = newNode;
-            tail = newNode;
-        }
-        else {
-            // This is not the first node.
-            // Add this node to the list and advance the tail
-            tail->next = newNode;
-            tail = newNode;
-        }
+void catchSIGTSTP(int signo) {
+    if (bgEnabled == 0) {
+        // Background process is allowed to run
+        bgEnabled = 1;
+        char *exitFgMsg = "Exiting foreground-only mode.\n";
+        write(1, exitFgMsg, 30);
     }
+    else {
+        // Background process is not allowed
+        bgEnabled = 0;
+        char *enterFgMsg = "Entering foreground-only mode (& is now ignored)\n";
+        write(1, enterFgMsg, 48);  
+    }
+}
 
-    return head;
+/*****************************************************************************
+ * This is a built-in command. It changes the working directory of smallsh.
+ *
+ * @params:   struct command
+ * @returns:  none
+ ****************************************************************************/
+void cdCommand(struct command *com) {
+    char **argsPtr = com->args;
+
+    if (com->argsIndex == 2) {
+        chdir(argsPtr[1]);
+    }
+    else {
+        chdir(getenv("HOME"));
+    }
 }
 
 
@@ -149,7 +99,7 @@ struct command *createCommand(char *currInput) {
 
     token = strtok(currInput, " \n");
 
-	while (token != NULL) {
+    while (token != NULL) {
         if (strcmp(token, ">") == 0) {
             token = strtok(NULL, " \n");
             currCom->outputFile = calloc(strlen(token) + 1, sizeof(char));
@@ -196,127 +146,29 @@ struct command *createCommand(char *currInput) {
 
 
 /*****************************************************************************
- * This is a built-in command. If user enters 'exit', this will exit our
- * smallsh program.
+ * Free up memory that was created to create our struct commmand
  *
  * @params:   none
  * @returns:  none
  ****************************************************************************/
-void exitCommand() {
-
-    // Exit the shell
-    exit (0);
-}
-
-
-/*****************************************************************************
- * This is a built-in command.
- * Prints out either the exit status or the terminating signal of the last
- * foreground process ran by our shell.
- *
- * @params:   int indicating the status
- * @returns:  none
- ****************************************************************************/
-void statusCommand(int status) {
-    int exitStatus = 0;
-
-    // Process was terminated by a signal
-    if (!WIFEXITED(status)){
-        exitStatus = WTERMSIG(status);
-
-        printf("terminated by signal %i\n", exitStatus);
-        fflush(stdout);
+void destroyCommand(struct command *com) {
+    // Traverse through command struct and free up memory
+    if (com->outputFile) {
+        free(com->outputFile);
     }
-    // Process exited normally
-    else {
-        exitStatus = WEXITSTATUS(status);
-
-        printf("exit value %i\n", exitStatus);
-        fflush(stdout);
-
+    if (com->inputFile) {
+        free(com->inputFile);
     }
-}
+    if (com->args) {
+        int i = 0;
+        while (com->args[i]) {
+            free(com->args[i]);
 
-
-/*****************************************************************************
- * This is a built-in command. It changes the working directory of smallsh.
- *
- * @params:   struct command
- * @returns:  none
- ****************************************************************************/
-void cdCommand(struct command *com) {
-    char **argsPtr = com->args;
-
-    if (com->argsIndex == 2) {
-        chdir(argsPtr[1]);
-    }
-    else {
-        chdir(getenv("HOME"));
-    }
-}
-
-
-/*****************************************************************************
- * Expands the '$$' in a command into the process ID of the smallsh itself.
- *
- * @params:   int PID - PID of smallsh
- *            pointer to cstring argStr - input entered by user with the '$$' 
- *            pointer to cstring orig - original input
- * @returns:  pointer to cstring with the '$$' expanded
- ****************************************************************************/
-char *expOfPID(int PID, const char* argStr, const char* orig) {
-    int pidLen;
-    int origLen;
-    char spid[100];
-    char *stringPID;
-
-    // Convert PID to string
-    sprintf(spid, "%d", PID);                                                    
-
-    // Get the length of converted PID and the '$$' (orig)
-    origLen = strlen(orig);
-    pidLen = strlen(spid);
-
-    int i;
-    int indCount = 0;
-    int count = 0;
-
-    // Traverse the string that is passed in and remove the '$$'
-    for(i = 0; argStr[i] != '\0'; i++) {
-        // Check for the '$$' and remove it by updating counters
-        if(strstr(&argStr[i], orig) == &argStr[i]) {
-            i = i + origLen - 1;
-
-            count++;
+            i++;
         }
     }
-
-    stringPID = (char*)malloc(i + count * (pidLen - origLen) + 1);
-
-    // Store the new string with the PID (without the '$$')
-    while(*argStr) {
-        // Add PID to the end of the string, without the '$$'
-        if(strstr(argStr, orig) == argStr) {
-            strcpy(&stringPID[indCount], spid);
-
-            // Take into account the newly added strings
-            indCount = indCount + pidLen;
-            argStr = argStr + origLen;
-        }
-        // Continue traversing through the string
-        else {
-            stringPID[indCount] = *argStr;
-
-            indCount++;
-            argStr++;
-        }
-    }
-
-    // Add NULL to end of array
-    stringPID[indCount] = '\0';
-
-    return stringPID;
 }
+
 
 
 /*****************************************************************************
@@ -462,45 +314,222 @@ void executeCommand(struct command *com, struct sigaction sigINT_action) {
 
 
 /*****************************************************************************
- * Custom handler for the CTRL-C command (SIGINT). Only the child running
- * as a foreground process will terminate itself when this SIGINT is 
- * received. The parent process and any children running in the background
- * will ignore this signal. 
+ * This is a built-in command. If user enters 'exit', this will exit our
+ * smallsh program.
  *
- * @params:   int signo - signal number
+ * @params:   none
  * @returns:  none
  ****************************************************************************/
-void catchSIGINT(int signo) {
+void exitCommand() {
 
-    char *message = "terminated by signal 2";
-    write(1, message, 22);
-    
-    printf("\n");
-    fflush(stdout);
+    // Exit the shell
+    exit (0);
+}
+
+
+
+/*****************************************************************************
+ * Expands the '$$' in a command into the process ID of the smallsh itself.
+ *
+ * @params:   int PID - PID of smallsh
+ *            pointer to cstring argStr - input entered by user with the '$$' 
+ *            pointer to cstring orig - original input
+ * @returns:  pointer to cstring with the '$$' expanded
+ ****************************************************************************/
+char *expOfPID(int PID, const char* argStr, const char* orig) {
+    int pidLen;
+    int origLen;
+    char spid[100];
+    char *stringPID;
+
+    // Convert PID to string
+    sprintf(spid, "%d", PID);                                                    
+
+    // Get the length of converted PID and the '$$' (orig)
+    origLen = strlen(orig);
+    pidLen = strlen(spid);
+
+    int i;
+    int indCount = 0;
+    int count = 0;
+
+    // Traverse the string that is passed in and remove the '$$'
+    for(i = 0; argStr[i] != '\0'; i++) {
+        // Check for the '$$' and remove it by updating counters
+        if(strstr(&argStr[i], orig) == &argStr[i]) {
+            i = i + origLen - 1;
+
+            count++;
+        }
+    }
+
+    stringPID = (char*)malloc(i + count * (pidLen - origLen) + 1);
+
+    // Store the new string with the PID (without the '$$')
+    while(*argStr) {
+        // Add PID to the end of the string, without the '$$'
+        if(strstr(argStr, orig) == argStr) {
+            strcpy(&stringPID[indCount], spid);
+
+            // Take into account the newly added strings
+            indCount = indCount + pidLen;
+            argStr = argStr + origLen;
+        }
+        // Continue traversing through the string
+        else {
+            stringPID[indCount] = *argStr;
+
+            indCount++;
+            argStr++;
+        }
+    }
+
+    // Add NULL to end of array
+    stringPID[indCount] = '\0';
+
+    return stringPID;
 }
 
 
 /*****************************************************************************
- * Custom handler for the CTRL-Z command (SIGTSTP). Only the parent process 
- * running the shell will receive this signal. Shell will display an
- * informative message and enters a state where commands will no longer be 
- * run in the background ('&' is ignored). All commands will run as 
- * foreground processes.
+ * Prompts user for command, creates a new command struct, and returns 
+ * this new struct
  *
- * @params:   int signo - signal number
+ * @params:   none
+ * @returns:  struct command with elements entered by user
+ ****************************************************************************/
+struct command *promptForCommand() {
+    char userInput[2048];
+    size_t nread = 0;
+
+    struct command *head = NULL;      // The head of the linked list
+    struct command *tail = NULL;      // The tail of the linked list
+
+    // Prompt user for input and store in variable
+    printf(": ");
+    fflush(stdout);
+
+    // Get user command
+    fgets(userInput, MAXLENGTH, stdin);
+
+    // Keep prompting user for command if blank lines or '#' entered,
+    // these be ignored by the shell
+    while (strcmp(userInput, "\n") == 0 || userInput[0] == '#'){
+        //print out the prompt for the user
+        printf(": ");
+        fflush(stdout);
+
+        // Read input from
+        nread = (size_t) fgets(userInput, MAXLENGTH, stdin);
+    }
+
+    // If read was successful, we create new struct command
+    if (nread != -1) {
+
+        // Get a new command node corresponding to the command entered
+        struct command *newNode = createCommand(userInput);
+
+        // If head is the first node of the list
+        if (head == NULL) {
+            // This is the first node in the linked list
+            // Set the head and the tail to this node
+            head = newNode;
+            tail = newNode;
+        }
+        else {
+            // This is not the first node.
+            // Add this node to the list and advance the tail
+            tail->next = newNode;
+            tail = newNode;
+        }
+    }
+
+    return head;
+}
+
+
+/*****************************************************************************
+ * Sets up our struct command and signal handlers, then runs our smallsh with
+ * the command entered by the user.
+ *
+ * @params:   none
  * @returns:  none
  ****************************************************************************/
-void catchSIGTSTP(int signo) {
-    if (bgEnabled == 0) {
-        // Background process is allowed to run
-        bgEnabled = 1;
-        char *exitFgMsg = "Exiting foreground-only mode.\n";
-        write(1, exitFgMsg, 30);
+void startSmallSh(struct command *com) {
+    int runShell = 1;
+
+    // Set up sigaction - this was taken from SIGNALS module
+    struct sigaction sigINT_action = {{0}}, sigTSTP_action = {{0}};
+
+    // Set up handler for SIGINT signal
+    sigINT_action.sa_handler = catchSIGINT;
+    sigfillset(&sigINT_action.sa_mask);
+    sigINT_action.sa_flags = SA_RESTART;
+
+    // Set up handler for SIGTSTP signal
+    sigTSTP_action.sa_handler = catchSIGTSTP;
+    sigfillset(&sigTSTP_action.sa_mask);
+    sigTSTP_action.sa_flags = SA_RESTART;
+
+    sigaction(SIGINT, &sigINT_action, NULL);
+    sigaction(SIGTSTP, &sigTSTP_action, NULL);
+
+    while (runShell == 1) { 
+        // Prompt for command and store in our command struct
+        com = promptForCommand();
+        char **argsPtr = com->args;
+
+        //check if we need to use a builtin
+        if ( (strcmp(argsPtr[0], "exit") == 0)   || 
+             (strcmp(argsPtr[0], "status") == 0) || 
+             (strcmp(argsPtr[0], "cd") == 0)){
+
+            if ((strcmp(argsPtr[0], "exit") == 0)){
+                fflush(stdout);
+                runShell = 0;
+                exitCommand();
+
+            }
+            else if ((strcmp(argsPtr[0], "status") == 0)){
+                statusCommand(status);
+            }
+            else if ((strcmp(argsPtr[0], "cd") == 0)){
+                cdCommand(com);
+            }
+        }
+        else {
+            executeCommand(com, sigINT_action);
+        }
+    }    
+}
+
+
+/*****************************************************************************
+ * This is a built-in command.
+ * Prints out either the exit status or the terminating signal of the last
+ * foreground process ran by our shell.
+ *
+ * @params:   int indicating the status
+ * @returns:  none
+ ****************************************************************************/
+void statusCommand(int status) {
+    int exitStatus = 0;
+
+    // Process was terminated by a signal
+    if (!WIFEXITED(status)){
+        exitStatus = WTERMSIG(status);
+
+        printf("terminated by signal %i\n", exitStatus);
+        fflush(stdout);
     }
+    // Process exited normally
     else {
-        // Background process is not allowed
-        bgEnabled = 0;
-        char *enterFgMsg = "Entering foreground-only mode (& is now ignored)\n";
-        write(1, enterFgMsg, 48);  
+        exitStatus = WEXITSTATUS(status);
+
+        printf("exit value %i\n", exitStatus);
+        fflush(stdout);
+
     }
 }
+
+
