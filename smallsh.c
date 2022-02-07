@@ -387,7 +387,7 @@ void executeCommand(struct command *com, struct sigaction sigINT_action) {
 
                 // Error in opening source file
                 if (sourceFD == -1) {
-                    printf("cannot open %s for input\n", argsPtr[0]);
+                    printf("cannot open %s for input\n", com->inputFile);
                     fflush(stdout);
                     // status = 1;
 
