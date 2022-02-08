@@ -52,7 +52,7 @@ void catchSIGTSTP(int signo);
 void cdCommand(struct command *com);
 struct command *createCommand(char *currLine);
 void destroyCommand(struct command *com);
-void executeCommand(struct command *com, struct sigaction sigINT_action);
+void executeCommand(struct command *com, struct sigaction sigINT_action, struct sigaction sigTSTP_action);
 void exitCommand();
 char *expOfPID(int PID, const char* argStr, const char* unexpandedVar);
 struct command *promptForCommand();

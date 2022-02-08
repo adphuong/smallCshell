@@ -201,7 +201,7 @@ void destroyCommand(struct command *com) {
  * @params:   command struct and signal handler for SIGINT
  * @returns:  none
  ****************************************************************************/
-void executeCommand(struct command *com, struct sigaction sigINT_action) {
+void executeCommand(struct command *com, struct sigaction sigINT_action, struct sigaction sigTSTP_action) {
     int execStatus = 0;
     int result = 0;
     pid_t spawnPID = fork();
@@ -218,10 +218,53 @@ void executeCommand(struct command *com, struct sigaction sigINT_action) {
             break;
         // Fork Successful, child will execvp() command
         case 0:
+            // The ignore_action struct as SIG_TSTP as its signal handler
+            sigTSTP_action.sa_handler = SIG_IGN;
+
             // If there is no bg flag, child will get default SIGINT
             if (com->bgFlag == 0 || bgEnabled == 0) {
                 sigINT_action.sa_handler = SIG_DFL;
                 sigaction(SIGINT, &sigINT_action, NULL);
+            }
+
+            // Redirect to '/dev/null' if process is in background
+            if (com->bgFlag == 1) {
+                if (com->inputFile == NULL) {
+                    int tempIn = open("/dev/null", O_RDONLY);
+
+                    // Error handling
+                    if (tempIn == -1) {
+                        perror("Error, cannot set /dev/null to input\n");
+                        fflush(stdout);
+                        _exit(1);
+                    }
+                    if (dup2(tempIn, STDIN_FILENO) == -1) {
+                        perror("Error, dup2 failed to redirect\n");
+                        fflush(stdout);
+                        _exit(1);
+                    }
+
+                    // Close on exec
+                    fcntl(tempIn, F_SETFD, FD_CLOEXEC);
+                }
+                // Redirect to /dev/null if no output file entered by user
+                if (com->outputFile == NULL) {
+                    int tempOut = open("/dev/null", O_RDWR, 0644);
+
+                    // Error handling
+                    if (tempOut == -1) {
+                        perror("Error, cannot set /dev/null to output\n");
+                        fflush(stdout);
+                        _exit(1);
+                    }
+                    if (dup2(tempOut, STDOUT_FILENO) == -1) {
+                        perror("Error, dup2 failed to redirect\n");
+                        fflush(stdout);
+                        _exit(1);
+                    }
+                    // Close on exec
+                    fcntl(tempOut, F_SETFD, FD_CLOEXEC);
+                }
             }
 
             // Set redirection for stdout before calling exec
@@ -282,7 +325,7 @@ void executeCommand(struct command *com, struct sigaction sigINT_action) {
                 // Close on exec
                 fcntl(sourceFD, F_SETFD, FD_CLOEXEC);
             } 
-
+        
             execStatus = 0;
             int aIndex = com->argsIndex;
             argsPtr[aIndex] = NULL;
@@ -300,7 +343,6 @@ void executeCommand(struct command *com, struct sigaction sigINT_action) {
             }
 
             break;
-            // exit(0);
             
         // Parent process is here
         default:
@@ -521,7 +563,7 @@ void startSmallSh(struct command *com) {
         }
         // Execute a non-built in command
         else {
-            executeCommand(com, sigINT_action);
+            executeCommand(com, sigINT_action, sigTSTP_action);
         }
     }    
 }
