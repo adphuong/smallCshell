@@ -31,9 +31,8 @@
  * @returns:  none
  ****************************************************************************/
 void catchSIGINT(int signo) {
-    // Prints out message
-    char *message = "terminated by signal 2\n";
-    write(1, message, 23);
+    char *msg = "\n";
+    write(1, msg, 1);
 }
 
 
@@ -111,34 +110,41 @@ struct command *createCommand(char *currInput) {
             currCom->inputFile = calloc(strlen(token) + 1, sizeof(char));
             strcpy(currCom->inputFile, token);
         }
-        // Checking for '&' for background process
-        else if (strcmp(token, "&") == 0) {
-            currCom->bgFlag = 1;
-        }
+        // // Checking for '&' for background process
+        // else if (strcmp(token, "&") == 0) {
+        //     currCom->bgFlag = 1;
+        // }
         // Otherwise, it is part of the command args
-        else {
+        else if (strstr(token, "$$") != NULL) {
             // Expands the '$$' part of the string
-            if (strstr(token, "$$") != NULL) {
-                char stringPID[512];
-
-                strcpy(stringPID, token);
-                currCom->args[argsIndex] = strdup(expOfPID(getpid(), stringPID, "$$")); 
-
-                argsIndex++;
-                currCom->argsIndex = argsIndex;
-            }
-            // No expansion needed, just store the arg into our struct
-            else {
-                currCom->args[argsIndex] = calloc(strlen(token) + 1, sizeof(char));
-                strcpy(currCom->args[argsIndex], token);
-
-                // Increment count for num of args and save this in our command struct
-                argsIndex++;
-                currCom->argsIndex = argsIndex;
-            }
             
+            char stringPID[512];
+
+            strcpy(stringPID, token);
+            currCom->args[argsIndex] = strdup(expOfPID(getpid(), stringPID, "$$")); 
+
+            argsIndex++;
+            currCom->argsIndex = argsIndex;
         }
+        // No expansion needed, just store the arg into our struct
+        else {
+            currCom->args[argsIndex] = calloc(strlen(token) + 1, sizeof(char));
+            strcpy(currCom->args[argsIndex], token);
+
+            // Increment count for num of args and save this in our command struct
+            argsIndex++;
+            currCom->argsIndex = argsIndex;
+        }
+            
+        
         token = strtok(NULL, " \n");
+    }
+
+    // Check to see if last arg is '&' so we can set our bgFlag
+    if (strcmp(currCom->args[argsIndex - 1], "&") == 0) {
+        currCom->args[argsIndex - 1] = NULL;
+        currCom->argsIndex--;
+        currCom->bgFlag = 1;
     }
 
     // Set the next node to NULL in the newly created command
@@ -207,8 +213,9 @@ void executeCommand(struct command *com, struct sigaction sigINT_action, struct 
                 sigaction(SIGINT, &sigINT_action, NULL);
             }
 
-            // Redirect to '/dev/null' if process is in background
-            if (com->bgFlag == 1) {
+            // Redirect to '/dev/null' if background processes are allowed
+            if (com->bgFlag == 1 && bgEnabled == 1) {
+                // Redirect to /dev/null if no input file entered by user
                 if (com->inputFile == NULL) {
                     int tempIn = open("/dev/null", O_RDONLY);
 
@@ -223,13 +230,14 @@ void executeCommand(struct command *com, struct sigaction sigINT_action, struct 
                         fflush(stdout);
                         _exit(1);
                     }
-
-                    // Close on exec
-                    fcntl(tempIn, F_SETFD, FD_CLOEXEC);
+                    close(tempIn);
+                    // // Close on exec
+                    // fcntl(tempIn, F_SETFD, FD_CLOEXEC);
                 }
                 // Redirect to /dev/null if no output file entered by user
                 if (com->outputFile == NULL) {
                     int tempOut = open("/dev/null", O_RDWR, 0644);
+                    fflush(stdout);
 
                     // Error handling
                     if (tempOut == -1) {
@@ -242,8 +250,9 @@ void executeCommand(struct command *com, struct sigaction sigINT_action, struct 
                         fflush(stdout);
                         _exit(1);
                     }
-                    // Close on exec
-                    fcntl(tempOut, F_SETFD, FD_CLOEXEC);
+                    close(tempOut);
+                    // // Close on exec
+                    // fcntl(tempOut, F_SETFD, FD_CLOEXEC);
                 }
             }
 
@@ -252,6 +261,7 @@ void executeCommand(struct command *com, struct sigaction sigINT_action, struct 
 
                 // Open our target file
                 int targetFD = open(com->outputFile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+                fflush(stdout);
 
                 // Error in opening file
                 if (targetFD == -1) {
@@ -422,6 +432,8 @@ char *expOfPID(int PID, const char* argStr, const char* unexpandedVar) {
         }
     }
 
+    stringPID[indCount] = '\0';
+
     return stringPID;
 }
 
@@ -451,7 +463,7 @@ struct command *promptForCommand() {
     // these be ignored by the shell
     while (strcmp(userInput, "\n") == 0 || userInput[0] == '#'){
         //print out the prompt for the user
-        printf(": ");
+        printf("\n: ");
         fflush(stdout);
 
         // Read input from
