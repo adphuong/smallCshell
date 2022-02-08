@@ -100,40 +100,63 @@ struct command *createCommand(char *currInput) {
     token = strtok(currInput, " \n");
 
     while (token != NULL) {
+        // Checking for output file
         if (strcmp(token, ">") == 0) {
             token = strtok(NULL, " \n");
             currCom->outputFile = calloc(strlen(token) + 1, sizeof(char));
             strcpy(currCom->outputFile, token);
         }
+        // Checking for input file
         else if (strcmp(token, "<") == 0) {
             token = strtok(NULL, " \n");
             currCom->inputFile = calloc(strlen(token) + 1, sizeof(char));
             strcpy(currCom->inputFile, token);
         }
+        // Checking for '&' for background process
         else if (strcmp(token, "&") == 0) {
             currCom->bgFlag = 1;
         }
-        else if(strstr(token, "$$") != NULL) {
-            char stringPID[512];
-            char **argsPtr = currCom->args;
+        // else if(strstr(token, "$$") != NULL) {
+        //     char stringPID[512];
+        //     char **argsPtr = currCom->args;
 
-            strcpy(stringPID, token);
-            currCom->args[argsIndex] = strdup(expOfPID(getpid(), stringPID, "$$")); 
+        //     strcpy(stringPID, token);
+        //     currCom->args[argsIndex] = strdup(expOfPID(getpid(), stringPID, "$$")); 
 
-            printf("%s\n", argsPtr[argsIndex]);  
-            fflush(stdout);
+        //     printf("%s\n", argsPtr[argsIndex]);  
+        //     fflush(stdout);
 
-            argsIndex++;
-        }   
+        //     argsIndex++;
+        // }   
+        // Otherwise, it is part of the command args
         else {
-            // This is an argument, so we allocate memory and store it in our 
-            // args array in our struct command
-            currCom->args[argsIndex] = calloc(strlen(token) + 1, sizeof(char));
-            strcpy(currCom->args[argsIndex], token);
+            // // This is an argument, so we allocate memory and store it in our 
+            // // args array in our struct command
+            // currCom->args[argsIndex] = calloc(strlen(token) + 1, sizeof(char));
+            // strcpy(currCom->args[argsIndex], token);
 
-            // Increment count for num of args and save this in our command struct
-            argsIndex++;
-            currCom->argsIndex = argsIndex;
+            // // Increment count for num of args and save this in our command struct
+            // argsIndex++;
+            // currCom->argsIndex = argsIndex;
+
+            if (strstr(token, "$$") != NULL) {
+                char stringPID[512];
+
+                strcpy(stringPID, token);
+                currCom->args[argsIndex] = strdup(expOfPID(getpid(), stringPID, "$$")); 
+
+                argsIndex++;
+                currCom->argsIndex = argsIndex;
+            }
+            else {
+                currCom->args[argsIndex] = calloc(strlen(token) + 1, sizeof(char));
+                strcpy(currCom->args[argsIndex], token);
+
+                // Increment count for num of args and save this in our command struct
+                argsIndex++;
+                currCom->argsIndex = argsIndex;
+            }
+            
         }
         token = strtok(NULL, " \n");
     }
@@ -335,7 +358,7 @@ void exitCommand() {
  *            pointer to cstring orig - original input
  * @returns:  pointer to cstring with the '$$' expanded
  ****************************************************************************/
-char *expOfPID(int PID, const char* argStr, const char* orig) {
+char *expOfPID(int PID, const char* argStr, const char* unexpandedVar) {
     int pidLen;
     int origLen;
     char spid[100];
@@ -344,8 +367,8 @@ char *expOfPID(int PID, const char* argStr, const char* orig) {
     // Convert PID to string
     sprintf(spid, "%d", PID);                                                    
 
-    // Get the length of converted PID and the '$$' (orig)
-    origLen = strlen(orig);
+    // Get the length of converted PID and the '$$' (unexpandedVar)
+    origLen = strlen(unexpandedVar);
     pidLen = strlen(spid);
 
     int i;
@@ -355,7 +378,7 @@ char *expOfPID(int PID, const char* argStr, const char* orig) {
     // Traverse the string that is passed in and remove the '$$'
     for(i = 0; argStr[i] != '\0'; i++) {
         // Check for the '$$' and remove it by updating counters
-        if(strstr(&argStr[i], orig) == &argStr[i]) {
+        if(strstr(&argStr[i], unexpandedVar) == &argStr[i]) {
             i = i + origLen - 1;
 
             count++;
@@ -367,7 +390,7 @@ char *expOfPID(int PID, const char* argStr, const char* orig) {
     // Store the new string with the PID (without the '$$')
     while(*argStr) {
         // Add PID to the end of the string, without the '$$'
-        if(strstr(argStr, orig) == argStr) {
+        if(strstr(argStr, unexpandedVar) == argStr) {
             strcpy(&stringPID[indCount], spid);
 
             // Take into account the newly added strings
@@ -384,7 +407,7 @@ char *expOfPID(int PID, const char* argStr, const char* orig) {
     }
 
     // Add NULL to end of array
-    stringPID[indCount] = '\0';
+    // stringPID[indCount] = '\0';
 
     return stringPID;
 }
@@ -496,6 +519,7 @@ void startSmallSh(struct command *com) {
                 cdCommand(com);
             }
         }
+        // Execute a non-built in command
         else {
             executeCommand(com, sigINT_action);
         }
