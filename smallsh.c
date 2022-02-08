@@ -31,12 +31,9 @@
  * @returns:  none
  ****************************************************************************/
 void catchSIGINT(int signo) {
-
-    char *message = "terminated by signal 2";
-    write(1, message, 22);
-    
-    printf("\n");
-    fflush(stdout);
+    // Prints out message
+    char *message = "terminated by signal 2\n";
+    write(1, message, 23);
 }
 
 
@@ -100,14 +97,16 @@ struct command *createCommand(char *currInput) {
     token = strtok(currInput, " \n");
 
     while (token != NULL) {
-        // Checking for output file
+        // Checking for output file redirection
         if (strcmp(token, ">") == 0) {
+            // Store input file without the '>' into our struct
             token = strtok(NULL, " \n");
             currCom->outputFile = calloc(strlen(token) + 1, sizeof(char));
             strcpy(currCom->outputFile, token);
         }
-        // Checking for input file
+        // Checking for input file redirection
         else if (strcmp(token, "<") == 0) {
+            // Store input file without the '<' into our struct
             token = strtok(NULL, " \n");
             currCom->inputFile = calloc(strlen(token) + 1, sizeof(char));
             strcpy(currCom->inputFile, token);
@@ -116,29 +115,9 @@ struct command *createCommand(char *currInput) {
         else if (strcmp(token, "&") == 0) {
             currCom->bgFlag = 1;
         }
-        // else if(strstr(token, "$$") != NULL) {
-        //     char stringPID[512];
-        //     char **argsPtr = currCom->args;
-
-        //     strcpy(stringPID, token);
-        //     currCom->args[argsIndex] = strdup(expOfPID(getpid(), stringPID, "$$")); 
-
-        //     printf("%s\n", argsPtr[argsIndex]);  
-        //     fflush(stdout);
-
-        //     argsIndex++;
-        // }   
         // Otherwise, it is part of the command args
         else {
-            // // This is an argument, so we allocate memory and store it in our 
-            // // args array in our struct command
-            // currCom->args[argsIndex] = calloc(strlen(token) + 1, sizeof(char));
-            // strcpy(currCom->args[argsIndex], token);
-
-            // // Increment count for num of args and save this in our command struct
-            // argsIndex++;
-            // currCom->argsIndex = argsIndex;
-
+            // Expands the '$$' part of the string
             if (strstr(token, "$$") != NULL) {
                 char stringPID[512];
 
@@ -148,6 +127,7 @@ struct command *createCommand(char *currInput) {
                 argsIndex++;
                 currCom->argsIndex = argsIndex;
             }
+            // No expansion needed, just store the arg into our struct
             else {
                 currCom->args[argsIndex] = calloc(strlen(token) + 1, sizeof(char));
                 strcpy(currCom->args[argsIndex], token);
@@ -277,7 +257,6 @@ void executeCommand(struct command *com, struct sigaction sigINT_action, struct 
                 if (targetFD == -1) {
                     printf("%s: no such file or directory\n", argsPtr[0]);
                     fflush(stdout);
-                    // status = 1;
 
                     _exit(1);
                 }
@@ -306,7 +285,6 @@ void executeCommand(struct command *com, struct sigaction sigINT_action, struct 
                 if (sourceFD == -1) {
                     printf("cannot open %s for input\n", com->inputFile);
                     fflush(stdout);
-                    // status = 1;
 
                     _exit(1);
                 }
@@ -318,7 +296,7 @@ void executeCommand(struct command *com, struct sigaction sigINT_action, struct 
                 if (result == -1) {
                     perror("Error! dup2 failed to redirect\n");
                     fflush(stdout);
-                    // status = 1;
+
                     _exit(1);
                 }
 
@@ -337,7 +315,6 @@ void executeCommand(struct command *com, struct sigaction sigINT_action, struct 
             if (execStatus == -1) {
                 printf("%s: no such file or directory\n", argsPtr[0]);
                 fflush(stdout);
-                // status = 1;
 
                 _exit(2);
             }
@@ -364,15 +341,12 @@ void executeCommand(struct command *com, struct sigaction sigINT_action, struct 
     }
 
     // Check for background processes that have terminated
-    while ( (spawnPID = waitpid(-1, &status, WNOHANG)) > 0) {
+    while ( (spawnPID = waitpid(-1, &status, WNOHANG) ) > 0) {
         printf("background pid %d is done: ", spawnPID);
         fflush(stdout);
 
         // Get exit status and print
         statusCommand(status);
-
-        // Get next child process
-        // spawnPID = waitpid(-1, &status, WNOHANG);
     }
 }
 
@@ -389,7 +363,6 @@ void exitCommand() {
     // Exit the shell
     exit (0);
 }
-
 
 
 /*****************************************************************************
@@ -443,13 +416,11 @@ char *expOfPID(int PID, const char* argStr, const char* unexpandedVar) {
         else {
             stringPID[indCount] = *argStr;
 
+            // Update counters
             indCount++;
             argStr++;
         }
     }
-
-    // Add NULL to end of array
-    // stringPID[indCount] = '\0';
 
     return stringPID;
 }
@@ -543,7 +514,7 @@ void startSmallSh(struct command *com) {
         com = promptForCommand();
         char **argsPtr = com->args;
 
-        //check if we need to use a builtin
+        // Check for builtin commands - 'exit', 'status', and 'cd'
         if ( (strcmp(argsPtr[0], "exit") == 0)   || 
              (strcmp(argsPtr[0], "status") == 0) || 
              (strcmp(argsPtr[0], "cd") == 0)){
@@ -593,7 +564,6 @@ void statusCommand(int status) {
 
         printf("exit value %i\n", exitStatus);
         fflush(stdout);
-
     }
 }
 
