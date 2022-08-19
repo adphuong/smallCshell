@@ -2,35 +2,30 @@
  * File:           main.c
  * Assignment:     03 - smallsh
  * Author:         April Phuong
- * Date:           January 26, 2022
- * Description:    This program declares a struct to define a Movie object with
- *                 title and year data.
- *                 It prompts the user with a main menu that allows them to
- *                 either select a file to process or exit the program.
- *                 If option 1 is chosen then a submenu will be displayed:
- *                     Enter 1 to pick the largest file
- *                     Enter 2 to pick the smalest file
- *                     Enter 3 to specify the name of a file
+ * Date:           February 9, 2022
+ * Description:    This program declares a struct to define a command object 
+ *                 with args, inputFile, outputFile, bgFlag, and argsIndex
+ * 				   data.
+ *                 It provides a subset of features of well-known shells such
+ *                 as built-in commands: cd, status, and exit. It allows
+ *                 the user to run non-builtin commands by calling fork(), 
+ * 				   and the execvp function and supports running processes in 
+ * 				   the foreground and background. There are also two custom
+ * 				   handlers implemented - SIGNINT and SIGTSTP.
  ****************************************************************************/
 
 #include "smallsh.c"
 
 int main(int argc, char *argv[]) {
-    startSmallSh();
+	// Instantiate our command struct
+	struct command *com = malloc(sizeof(struct command));;                 
 
-    // pid_t spawnpid = fork();
+	// Run our smallsh
+	startSmallSh(com);
 
-    // // Use for exec()
-    // switch (spawnpid) {
-    //     case -1:
-    //         perror("Error. Fork failed.");
-    //         break;
-    //     case 0:
-    //         printf("I am the child\n");         // DELETE
-    //         break;
-    //     default:
-    //         printf("I am the parent of %d\n", spawnpid);     // DELETE
-    // }
+	destroyCommand(com);
 
-    return EXIT_SUCCESS;
+	free(com);
+
+	return EXIT_SUCCESS;
 }
