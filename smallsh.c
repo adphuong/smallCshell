@@ -2,7 +2,7 @@
  *  File:           smallsh.c
  *  Assignment:     03 - smallsh
  *  Author:         April Phuong
- *  Date:           February 7, 2022
+ *  Date:           February 9, 2022
  *  Description:    This file contains the following functions used for the
  *                  program (in alphabetical order):
  *                      catchSIGINT();
@@ -12,7 +12,7 @@
  *                      destroyCommand();
  *                      executeCommand();
  *                      exitCommand();
- *                      expOfPID();
+ *                      expandDollarSigns();
  *                      promptForCommand();
  *                      startSmallSh();
  *                      statusCommand();
@@ -48,13 +48,13 @@ void catchSIGINT(int signo) {
  ****************************************************************************/
 void catchSIGTSTP(int signo) {
     if (bgEnabled == 0) {
-        // Background process is allowed to run
+        // Background process is allowed to run - set to true
         bgEnabled = 1;
         char *exitFgMsg = "Exiting foreground-only mode\n";
         write(1, exitFgMsg, 29);
     }
     else {
-        // Background process is not allowed
+        // Background process is not allowed - set to false
         bgEnabled = 0;
         char *enterFgMsg = "Entering foreground-only mode (& is now ignored)\n";
         write(1, enterFgMsg, 49);  
@@ -70,9 +70,11 @@ void catchSIGTSTP(int signo) {
 void cdCommand(struct command *com) {
     char **argsPtr = com->args;
 
+    // If there is an arg after 'cd', change directory to that arg
     if (com->argsIndex == 2) {
         chdir(argsPtr[1]);
     }
+    // Change to HOME directory
     else {
         chdir(getenv("HOME"));
     }
@@ -110,40 +112,60 @@ struct command *createCommand(char *currInput) {
             currCom->inputFile = calloc(strlen(token) + 1, sizeof(char));
             strcpy(currCom->inputFile, token);
         }
-        // // Checking for '&' for background process
-        // else if (strcmp(token, "&") == 0) {
-        //     currCom->bgFlag = 1;
-        // }
-        // Otherwise, it is part of the command args
-        else if (strstr(token, "$$") != NULL) {
-            // Expands the '$$' part of the string
+        // Replace the '$$' with the pid and store in struct
+        else if (strcmp(token, "$$") == 0) {
+            // Holds the string with expanded PID     
             
-            char stringPID[512];
+            char strPID[20];
 
-            strcpy(stringPID, token);
-            currCom->args[argsIndex] = strdup(expOfPID(getpid(), stringPID, "$$")); 
+            // Get PID and convert it to a string
+            sprintf(strPID, "%d", getpid()); 
 
-            argsIndex++;
-            currCom->argsIndex = argsIndex;
-        }
-        // No expansion needed, just store the arg into our struct
-        else {
             currCom->args[argsIndex] = calloc(strlen(token) + 1, sizeof(char));
-            strcpy(currCom->args[argsIndex], token);
+            strcpy(currCom->args[argsIndex], strPID);
 
             // Increment count for num of args and save this in our command struct
             argsIndex++;
             currCom->argsIndex = argsIndex;
         }
+        // This is an arg, might also contain the '$$'
+        else {
+            // There is an occurrence of '$$' in the string token
+            if (strstr(token, "$$") != NULL) {
+
+                // Expand the '$$' to the PID into the string, allocate memory
+                // and store into our struct
+                char *expandedString = expandDollarSigns(getpid(), token);
+                currCom->args[argsIndex] = calloc(strlen(token) + 1, sizeof(char));
+                strcpy(currCom->args[argsIndex], expandedString);
+
+                // Increment count for num of args and save this in our command struct
+                argsIndex++;
+                currCom->argsIndex = argsIndex;
+            }
+            // No expansion of '$$' needed, just store the arg
+            else {
+                // Allocate memory and copy token into struct for args
+                currCom->args[argsIndex] = calloc(strlen(token) + 1, sizeof(char));
+                strcpy(currCom->args[argsIndex], token);
+
+                // Increment count for num of args and save this in our command struct
+                argsIndex++;
+                currCom->argsIndex = argsIndex;
+            }
             
-        
+        }        
         token = strtok(NULL, " \n");
     }
 
     // Check to see if last arg is '&' so we can set our bgFlag
     if (strcmp(currCom->args[argsIndex - 1], "&") == 0) {
+        // We don't need to store this in our args array, so set to NULL
+        // and update argsIndex counter
         currCom->args[argsIndex - 1] = NULL;
         currCom->argsIndex--;
+
+        // Background processes are enabled
         currCom->bgFlag = 1;
     }
 
@@ -161,6 +183,8 @@ struct command *createCommand(char *currInput) {
  * @returns:  none
  ****************************************************************************/
 void destroyCommand(struct command *com) {
+    char **argsPtr = com->args;
+
     // Traverse through command struct and free up memory
     if (com->outputFile) {
         free(com->outputFile);
@@ -168,10 +192,10 @@ void destroyCommand(struct command *com) {
     if (com->inputFile) {
         free(com->inputFile);
     }
-    if (com->args) {
+    if (argsPtr) {
         int i = 0;
-        while (com->args[i]) {
-            free(com->args[i]);
+        while (argsPtr[i]) {
+            free(argsPtr[i]);
 
             i++;
         }
@@ -179,17 +203,19 @@ void destroyCommand(struct command *com) {
 }
 
 
-
 /*****************************************************************************
  * When a non-built in command is received, smallsh will fork off a child,
  * and the child will use execvp() to run the command
  *
- * @params:   command struct and signal handler for SIGINT
+ * @params:   command struct and signal handler for SIGINT and SIGTSTP
  * @returns:  none
+ * @source:   https://youtu.be/1R9h-H2UnLs (3.1 Processes Lecture)
+ *            https://youtu.be/9Gsp-wucTNw (3.4 More UNIX IO)
  ****************************************************************************/
-void executeCommand(struct command *com, struct sigaction sigINT_action, struct sigaction sigTSTP_action) {
+void executeCommand(struct command *com, struct sigaction sigINT_action, 
+                    struct sigaction sigTSTP_action) {
     int execStatus = 0;
-    int result = 0;
+    int redirection = 0;
     pid_t spawnPID = fork();
     char **argsPtr = com->args;
 
@@ -207,7 +233,8 @@ void executeCommand(struct command *com, struct sigaction sigINT_action, struct 
             // The ignore_action struct as SIG_TSTP as its signal handler
             sigTSTP_action.sa_handler = SIG_IGN;
 
-            // If there is no bg flag, child will get default SIGINT
+            // If there background processes are not enabled,
+            // child will get default SIGINT
             if (com->bgFlag == 0 || bgEnabled == 0) {
                 sigINT_action.sa_handler = SIG_DFL;
                 sigaction(SIGINT, &sigINT_action, NULL);
@@ -217,6 +244,8 @@ void executeCommand(struct command *com, struct sigaction sigINT_action, struct 
             if (com->bgFlag == 1 && bgEnabled == 1) {
                 // Redirect to /dev/null if no input file entered by user
                 if (com->inputFile == NULL) {
+
+                    // Open file for read only
                     int tempIn = open("/dev/null", O_RDONLY);
 
                     // Error handling
@@ -230,14 +259,14 @@ void executeCommand(struct command *com, struct sigaction sigINT_action, struct 
                         fflush(stdout);
                         _exit(1);
                     }
-                    close(tempIn);
-                    // // Close on exec
-                    // fcntl(tempIn, F_SETFD, FD_CLOEXEC);
+                    // Close on exec
+                    fcntl(tempIn, F_SETFD, FD_CLOEXEC);
                 }
                 // Redirect to /dev/null if no output file entered by user
                 if (com->outputFile == NULL) {
+
+                    // Open file for read and write
                     int tempOut = open("/dev/null", O_RDWR, 0644);
-                    fflush(stdout);
 
                     // Error handling
                     if (tempOut == -1) {
@@ -250,9 +279,8 @@ void executeCommand(struct command *com, struct sigaction sigINT_action, struct 
                         fflush(stdout);
                         _exit(1);
                     }
-                    close(tempOut);
-                    // // Close on exec
-                    // fcntl(tempOut, F_SETFD, FD_CLOEXEC);
+                    // Close on exec
+                    fcntl(tempOut, F_SETFD, FD_CLOEXEC);
                 }
             }
 
@@ -272,10 +300,10 @@ void executeCommand(struct command *com, struct sigaction sigINT_action, struct 
                 }
 
                 // Redirect our stdout (1) to targetFD
-                result = dup2(targetFD, 1);
+                redirection = dup2(targetFD, 1);
 
                 // Error with redirecting stdout
-                if (result == -1) {
+                if (redirection == -1) {
                     perror("Error! dup2 failed to redirect\n");
                     fflush(stdout);
                     _exit(1);
@@ -300,10 +328,10 @@ void executeCommand(struct command *com, struct sigaction sigINT_action, struct 
                 }
 
                 // Redirect our stdin (0) to sourceFD
-                result = dup2(sourceFD, 0);
+                redirection = dup2(sourceFD, 0);
 
                 // dup2 error, set status to 1 and exit
-                if (result == -1) {
+                if (redirection == -1) {
                     perror("Error! dup2 failed to redirect\n");
                     fflush(stdout);
 
@@ -313,10 +341,6 @@ void executeCommand(struct command *com, struct sigaction sigINT_action, struct 
                 // Close on exec
                 fcntl(sourceFD, F_SETFD, FD_CLOEXEC);
             } 
-        
-            execStatus = 0;
-            int aIndex = com->argsIndex;
-            argsPtr[aIndex] = NULL;
 
             // Execute non-built in command
             execStatus = execvp(argsPtr[0], argsPtr);
@@ -328,15 +352,16 @@ void executeCommand(struct command *com, struct sigaction sigINT_action, struct 
 
                 _exit(2);
             }
-
             break;
             
         // Parent process is here
         default:
-            // This will launch background process if both vars are true
+
+            // Background processes are enabled - we want to set it up
+            // so that parent process can continue with other tasks while
+            // child process is still running
             if (com->bgFlag == 1 && bgEnabled == 1) {
-                // Prevents from blocking so that parent process can go on 
-                // with other tasks while child process is still running. 
+
                 // If child dies, its PID will be returned
                 waitpid(spawnPID, &status, WNOHANG);
                 printf("background pid is %d\n", spawnPID);
@@ -344,14 +369,14 @@ void executeCommand(struct command *com, struct sigaction sigINT_action, struct 
             }
             else {
                 // Otherwise, we launch a foreground process - we do
-                // nothing while child process is running
+                // nothing until child process is done running
                 waitpid(spawnPID, &status, 0);
             }
             break;
     }
 
-    // Check for background processes that have terminated
-    while ( (spawnPID = waitpid(-1, &status, WNOHANG) ) > 0) {
+    // Check for any child processes (in bg) that have terminated
+    while ((spawnPID = waitpid(-1, &status, WNOHANG)) > 0) {
         printf("background pid %d is done: ", spawnPID);
         fflush(stdout);
 
@@ -371,7 +396,7 @@ void executeCommand(struct command *com, struct sigaction sigINT_action, struct 
 void exitCommand() {
 
     // Exit the shell
-    exit (0);
+    exit(0);
 }
 
 
@@ -380,61 +405,81 @@ void exitCommand() {
  *
  * @params:   int PID - PID of smallsh
  *            pointer to cstring argStr - input entered by user with the '$$' 
- *            pointer to cstring orig - original input
  * @returns:  pointer to cstring with the '$$' expanded
+ * @source:   https://stackoverflow.com/questions/12784766/check-substring-
+ *            exists-in-a-string-in-c/12784812 (checking for substring '$$')
  ****************************************************************************/
-char *expOfPID(int PID, const char* argStr, const char* unexpandedVar) {
-    int pidLen;
-    int origLen;
-    char spid[100];
-    char *stringPID;
+char *expandDollarSigns(int PID, const char* argStr) {
+    char strPID[20];
+    char *strFound;
+    int unexpandedVarLength = 2;        // Length of '$$' is 2
 
-    // Convert PID to string
-    sprintf(spid, "%d", PID);                                                    
+    // Convert PID int to string
+    sprintf(strPID, "%d", PID);                                                    
 
-    // Get the length of converted PID and the '$$' (unexpandedVar)
-    origLen = strlen(unexpandedVar);
-    pidLen = strlen(spid);
+    // Get the length of converted PID
+    int pidLen = strlen(strPID);
 
-    int i;
-    int indCount = 0;
+    // Setup counters
+    int arrInd = 0;
     int count = 0;
 
-    // Traverse the string that is passed in and remove the '$$'
-    for(i = 0; argStr[i] != '\0'; i++) {
-        // Check for the '$$' and remove it by updating counters
-        if(strstr(&argStr[i], unexpandedVar) == &argStr[i]) {
-            i = i + origLen - 1;
+    // Traverse the string that is passed in and count the number 
+    // of occurrences for our substring '$$'
+    int i = 0;
+    while (argStr[i] != '\0') {
+        // Check to see if substring '$$' is in argStr
+        strFound = strstr(&argStr[i], "$$");
 
+        // Check for the '$$'. If found, update counters that will be used
+        // to allocate memory for our expanded string
+        if(strFound == &argStr[i]) {
+            i = i + unexpandedVarLength - 1;
+
+            // Counter for '$$' found in the string
             count++;
         }
+        i++;
     }
 
-    stringPID = (char*)malloc(i + count * (pidLen - origLen) + 1);
+    // Allocate memory to store expanded string in var
+    char *stringPIDexpanded = (char*) malloc(i + count * (pidLen - unexpandedVarLength) + 1);
 
-    // Store the new string with the PID (without the '$$')
-    while(*argStr) {
-        // Add PID to the end of the string, without the '$$'
-        if(strstr(argStr, unexpandedVar) == argStr) {
-            strcpy(&stringPID[indCount], spid);
+    // Store the new string with the PID (the '$$' is expanded)
+    while(*argStr != '\0') {
+        // If substring is found, strstr will return a pointer to where
+        // this substring begins
+        strFound = strstr(argStr, "$$");
 
-            // Take into account the newly added strings
-            indCount = indCount + pidLen;
-            argStr = argStr + origLen;
-        }
-        // Continue traversing through the string
-        else {
-            stringPID[indCount] = *argStr;
+        // Substring '$$' not found, continue traversing through argStr
+        if(strFound != argStr) {
+            // Store whatever argStr holds into stringPIDexpanded
+            stringPIDexpanded[arrInd] = *argStr;
 
             // Update counters
-            indCount++;
-            argStr++;
+            arrInd++;
+            argStr++;            
+        }
+        // Substring '$$' found, add PID to the string, without the '$$'
+        else {
+            // Copy the PID (of string type) into new variable
+            strcpy(&stringPIDexpanded[arrInd], strPID);
+
+            // Update arrInd counter to accommodate the newly 
+            // added PID string
+            arrInd = arrInd + pidLen;
+
+            // Move our argStr pointer forward by 2, since
+            // we need to continue traversing argStr after
+            // running into '$$' occurrence
+            argStr = argStr + unexpandedVarLength;
         }
     }
 
-    stringPID[indCount] = '\0';
+    // Set last index to newline
+    stringPIDexpanded[arrInd] = '\0';
 
-    return stringPID;
+    return stringPIDexpanded;
 }
 
 
@@ -501,6 +546,7 @@ struct command *promptForCommand() {
  *
  * @params:   none
  * @returns:  none
+ * @source:   https://youtu.be/VwS3dx3uyiQ (3.3 Signals)
  ****************************************************************************/
 void startSmallSh(struct command *com) {
     int runShell = 1;
@@ -524,31 +570,29 @@ void startSmallSh(struct command *com) {
     while (runShell == 1) { 
         // Prompt for command and store in our command struct
         com = promptForCommand();
+
+        // Used to get args data from our struct
         char **argsPtr = com->args;
 
         // Check for builtin commands - 'exit', 'status', and 'cd'
-        if ( (strcmp(argsPtr[0], "exit") == 0)   || 
-             (strcmp(argsPtr[0], "status") == 0) || 
-             (strcmp(argsPtr[0], "cd") == 0)){
-
-            if ((strcmp(argsPtr[0], "exit") == 0)){
-                fflush(stdout);
-                runShell = 0;
-                exitCommand();
-
-            }
-            else if ((strcmp(argsPtr[0], "status") == 0)){
-                statusCommand(status);
-            }
-            else if ((strcmp(argsPtr[0], "cd") == 0)){
-                cdCommand(com);
-            }
+        // Check for 'exit' built-in command
+        if ((strcmp(argsPtr[0], "exit") == 0)){
+            runShell = 0;
+            exitCommand();
+        }
+        // Check for 'status' built-in command
+        else if ((strcmp(argsPtr[0], "status") == 0)){
+            statusCommand(status);
+        }
+        // Check for 'cd' built-in command
+        else if ((strcmp(argsPtr[0], "cd") == 0)){
+            cdCommand(com);
         }
         // Execute a non-built in command
         else {
             executeCommand(com, sigINT_action, sigTSTP_action);
         }
-    }    
+    }
 }
 
 
