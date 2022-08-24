@@ -1,5 +1,5 @@
 /*****************************************************************************
- * File:            smallsh.h
+ * File:            simpleCshell.h
  * Assignment:      03 - smallsh
  * Author:          April Phuong
  * Date:            February 9, 2022
@@ -7,8 +7,8 @@
  *                  it contains all the function prototypes and struct.
  ****************************************************************************/
 
-#ifndef SMALLSH_H
-#define SMALLSH_H
+#ifndef SIMPLECSHELL_H
+#define SIMPLECSHELL_H
 #define _GNU_SOURCE
 
 // Libraries used
