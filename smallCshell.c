@@ -1,5 +1,5 @@
 /*****************************************************************************
- *  File:           simpleCshell.c
+ *  File:           smallCshell.c
  *  Assignment:     03 - smallsh
  *  Author:         April Phuong
  *  Date:           February 9, 2022
@@ -18,7 +18,7 @@
  *                      statusCommand();
  ****************************************************************************/
 
-#include "simpleCshell.h"
+#include "smallCshell.h"
 
 
 /*****************************************************************************
