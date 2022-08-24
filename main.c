@@ -14,7 +14,7 @@
  * 				   handlers implemented - SIGNINT and SIGTSTP.
  ****************************************************************************/
 
-#include "simpleCshell.c"
+#include "smallCshell.c"
 
 int main(int argc, char *argv[]) {
 	// Instantiate our command struct
