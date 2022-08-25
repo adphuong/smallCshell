@@ -5,6 +5,7 @@
  * Date:            February 9, 2022
  * Description:     This is the header file for our smallsh program -
  *                  it contains all the function prototypes and struct.
+ *                  Documentation of functions found in smallsh.c.
  ****************************************************************************/
 
 #ifndef SMALLCSHELL_H
