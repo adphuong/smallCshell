@@ -3,26 +3,31 @@
  * Assignment:     03 - smallsh
  * Author:         April Phuong
  * Date:           February 9, 2022
- * Description:    This program declares a struct to define a command object 
- *                 with args, inputFile, outputFile, bgFlag, and argsIndex
- * 				   data.
- *                 It provides a subset of features of well-known shells such
- *                 as built-in commands: cd, status, and exit. It allows
- *                 the user to run non-builtin commands by calling fork(), 
- * 				   and the execvp function and supports running processes in 
- * 				   the foreground and background. There are also two custom
- * 				   handlers implemented - SIGNINT and SIGTSTP.
+ * Description:    This program is a small command line application that 
+ *                 provides a subset of features of well-known shells such
+ *                 as the following built-in commands: cd, status, and exit. 
+ *		   Other commands are also implemented and support input and
+ *		   output redirection. Commands can execute either in the 
+ * 	           foreground or background. Variable expansion is provided for 
+ *                 instances of "$$", which will give the current program's PID.
+ *		   There are also two custom handlers implemented - SIGNINT 
+ *                 and SIGTSTP.
  ****************************************************************************/
 
 #include "smallCshell.c"
 
+
+/*****************************************************************************
+* This is the main driver of the program. Functions are found in smallsh.c
+****************************************************************************/
 int main(int argc, char *argv[]) {
 	// Instantiate our command struct
 	struct command *com = malloc(sizeof(struct command));;                 
 
-	// Run our smallsh
+	// Run our smallsh with command
 	startSmallSh(com);
 
+	// Destroy dynamic allocation
 	destroyCommand(com);
 
 	free(com);
