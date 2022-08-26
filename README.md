@@ -1,7 +1,7 @@
 # smallCshell
  A simple Unix shell implementation in C that includes some basic shell features.
  
- ## Compiling code (with makefile):
+ ## Compiling and running code (with makefile):
 Command to run on terminal:             
 ```
 make
